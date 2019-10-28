@@ -8,7 +8,18 @@ using namespace BME280;
 
 LiquidCrystal lcd(13, 12, 11, 10, 9, 8);
 
-BME280Sensor bme280 = BME280Sensor(new I2CProtocol());
+class CustomI2CProtocol : public I2CProtocol
+{
+  public:
+    virtual void init()
+    {
+      I2CProtocol::init();
+      Wire.setClock(400000);
+    }
+};
+
+BME280Sensor bme280 = BME280Sensor(new CustomI2CProtocol());
+//BME280Sensor bme280 = BME280Sensor(new I2CProtocol());
 
 void setup()
 {

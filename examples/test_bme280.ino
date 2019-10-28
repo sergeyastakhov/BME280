@@ -1,12 +1,14 @@
 #include <Arduino.h>
 #include <LiquidCrystal.h>
-#include <Wire.h>
 #include "BME280.h"
 
 #define PA_2_MMHG(pressurePa)  (pressurePa*760.f/101325.f)
 
+using namespace BME280;
+
 LiquidCrystal lcd(13, 12, 11, 10, 9, 8);
-BME280 bme280;
+
+BME280Sensor bme280 = BME280Sensor(new I2CProtocol());
 
 void setup()
 {
@@ -15,7 +17,10 @@ void setup()
   if( !bme280.init() )
   {
     lcd.print("Init error!");
+    return;
   }
+
+  bme280.setMode(Normal, Over_16, Over_16, Over_16);   // Choose 16X oversampling
 }
 
 void loop()
@@ -23,7 +28,7 @@ void loop()
   if( !bme280.isInitialized() )
     return;
 
-  BME280::Measurement measurement = bme280.readMeasurement();
+  Measurement measurement = bme280.readMeasurement();
 
   if( !measurement.isValid() )
   {
@@ -49,7 +54,7 @@ void loop()
 //    Serial.print(measurement.getHumidity());
 //    Serial.print(',');
 
-    float pressurePa = measurement.getPressure();
+    float pressurePa = measurement.getPressure64();
     float pressureHg = PA_2_MMHG(pressurePa);
 
     lcd.setCursor(0, 1);

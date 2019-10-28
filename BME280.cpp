@@ -5,164 +5,12 @@
  */
 #include "BME280.h"
 
-/*5.4.1 Register 0xD0 “id”
-The “id” register contains the chip identification number chip_id[7:0], which is 0x60. This number
-can be read as soon as the device finished the power-on-reset.*/
-#define REG_CHIPID         0xD0
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "readability-static-accessed-through-instance"
 
-/*5.4.2 Register 0xE0 “reset”
-The “reset” register contains the soft reset word reset[7:0]. If the value 0xB6 is written to the
-register, the device is reset using the complete power-on-reset procedure. Writing other values
-than 0xB6 has no effect. The readout value is always 0x00.*/
-#define REG_SOFTRESET      0xE0
+using namespace BME280;
 
-#define SOFTRESET_ACTIVATE 0xB6
-
-/*5.4.3 Register 0xF2 “ctrl_hum”
-The “ctrl_hum” register sets the humidity data acquisition options of the device. Changes to
-this register only become effective after a write operation to “ctrl_meas”.*/
-#define REG_CONTROL_HUMIDITY  0xF2
-
-/*5.4.4 Register 0xF3 “status”
-The “status” register contains two bits which indicate the status of the device.*/
-#define REG_STATUS    0xF3
-
-/*5.4.5 Register 0xF4 “ctrl_meas”
-The “ctrl_meas” register sets the pressure and temperature data acquisition options of the
-device. The register needs to be written after changing “ctrl_hum” for the changes to become
-effective.*/
-#define REG_CONTROL_MEAS      0xF4
-
-/*5.4.6 Register 0xF5 “config”
-The “config” register sets the rate, filter and interface options of the device. Writes to the “config”
-register in normal mode may be ignored. In sleep mode writes are not ignored.*/
-#define REG_CONFIG  0xF5
-
-#define REG_CALIB_1 0x88
-#define REG_CALIB_2 0xE1
-
-#define REG_MEASUREMENT  0xF7
-
-bool BME280::init()
-{
-  Wire.begin();
-
-  // Read and check chip id
-  if( !readRegisters(REG_CHIPID, 1, &chipId) )
-    return false;
-
-  if( chipId != CHIPID_BME280 && chipId != CHIPID_BMP280 )
-    return false;
-
-  // Read calibration data
-  uint8_t calib[42];
-
-  // calib00…calib25 at memory addresses 0x88…0xA1
-  if( !readRegisters(REG_CALIB_1, 26, calib) )
-    return false;
-
-  // calib26…calib41 at memory addresses 0xE1…0xF0
-  if( !readRegisters(REG_CALIB_2, 16, calib + 26) )
-    return false;
-
-  if( !calData.init(calib) )
-    return false;
-
-  setMode(Normal, Over_16, Over_16, Over_16);   // Choose 16X oversampling
-
-  initialized = true;
-
-  return true;
-}
-
-void BME280::writeRegister(uint8_t reg, uint8_t val)
-{
-  Wire.beginTransmission(address);
-  Wire.write(reg);
-  Wire.write(val);
-  Wire.endTransmission();
-}
-
-bool BME280::readRegisters(uint8_t startReg, uint8_t count, uint8_t *buf)
-{
-  Wire.beginTransmission(address);
-  Wire.write(startReg);
-  Wire.endTransmission();
-
-  uint8_t read = Wire.requestFrom(address, count);
-
-  if( read < count )
-    return false;
-
-  for( int i = 0; i < count; ++i )
-  {
-    int value = Wire.read();
-    if( value < 0 )
-      return false;
-
-    buf[i] = static_cast<uint8_t>(value);
-  }
-
-  return true;
-}
-
-void BME280::setMode(Mode mode, OverSampling osrs_t, OverSampling osrs_p, OverSampling osrs_h)
-{
-  writeRegister(REG_CONTROL_HUMIDITY, (osrs_h & 0x7));
-  writeRegister(REG_CONTROL_MEAS, mode | ((osrs_p & 0x7) << 2) | ((osrs_t & 0x7) << 5));
-}
-
-void BME280::setConfig(bool enableSPI, IRRFilterCoefficient filterCoefficient, StandbyTime standbyTime)
-{
-  writeRegister(REG_CONFIG,
-                static_cast<uint8_t>(enableSPI) | ((filterCoefficient & 0x7) << 2) | ((standbyTime & 0x7) << 5));
-}
-
-bool BME280::readMeasurement(RawMeasurement &rawMeasurement)
-{
-  uint8_t buf[8];
-
-  if( !readRegisters(REG_MEASUREMENT, 8, buf) )
-    return false;
-
-  uint32_t v = buf[0];
-  v <<= 8;
-  v |= buf[1];
-  v <<= 8;
-  v |= buf[2];
-  rawMeasurement.rawPressure = v >> 4;
-
-  v = buf[3];
-  v <<= 8;
-  v |= buf[4];
-  v <<= 8;
-  v |= buf[5];
-  rawMeasurement.rawTemperature = v >> 4;
-
-  v = buf[6];
-  v <<= 8;
-  v |= buf[7];
-  rawMeasurement.rawHumidity = v;
-
-  return true;
-}
-
-BME280::Measurement BME280::readMeasurement()
-{
-  RawMeasurement rawMeasurement = {};
-
-  bool valid = readMeasurement(rawMeasurement);
-
-  return Measurement(valid, rawMeasurement, calData);
-}
-
-void BME280::softReset()
-{
-  writeRegister(REG_SOFTRESET, SOFTRESET_ACTIVATE);
-  delay(2); // 2 ms - startup time from specification
-}
-
-float BME280::Measurement::getTemperature() const
+float Measurement::getTemperature() const
 {
 // Returns temperature in DegC, resolution is 0.01 DegC. Output value of “5123” equals 51.23 DegC.
 
@@ -170,21 +18,25 @@ float BME280::Measurement::getTemperature() const
   return T / 100.f;
 }
 
-BME280::Measurement::Measurement(bool valid, const RawMeasurement &rawMeasurement,
-                                 const CalibrationData &calData)
+Measurement::Measurement(bool valid, const RawMeasurement &rawMeasurement, const CalibrationData &calData)
     : valid(valid), rawMeasurement(rawMeasurement), calData(calData)
 {
   t_fine = calData.calcTFine(rawMeasurement.rawTemperature);
 }
 
-float BME280::Measurement::getPressure() const
+float Measurement::getPressure64() const
 {
-  int64_t p = calData.calcPressure(rawMeasurement.rawPressure, t_fine);
+  int64_t p = calData.calcPressure64(rawMeasurement.rawPressure, t_fine);
 
   return p / 256.f;
 }
 
-float BME280::Measurement::getHumidity() const
+uint32_t Measurement::getPressure32() const
+{
+  return calData.calcPressure32(rawMeasurement.rawPressure, t_fine);
+}
+
+float Measurement::getHumidity() const
 {
   int32_t h = calData.calcHumidity(rawMeasurement.rawHumidity, t_fine);
 
@@ -226,12 +78,14 @@ static uint8_t crc_calculate(const uint8_t *mem_values, uint8_t mem_length)
   return (uint8_t) (crc_reg ^ 0xFF);
 }
 
-bool BME280::CalibrationData::init(uint8_t calib[42])
+bool CalibrationData::isValid(uint8_t calib[42])
 {
   uint8_t crc = crc_calculate(calib, 33);
-  if( crc != calib[33] )
-    return false;
+  return crc == calib[33];
+}
 
+void CalibrationData::init(const uint8_t calib[42])
+{
 #define LES16(array, offset) (array[offset] | (array[offset+1]<<8))
 #define LEU16(array, offset) (uint16_t)(LES16(array,offset))
 
@@ -255,11 +109,9 @@ bool BME280::CalibrationData::init(uint8_t calib[42])
   dig_H4 = (calib[29] << 4) | (calib[30] & 0xf);
   dig_H5 = ((calib[30] & 0xf0) >> 4) | (calib[31] << 4);
   dig_H6 = calib[32];
-
-  return true;
 }
 
-int32_t BME280::CalibrationData::calcTFine(int32_t adc_T) const
+int32_t CalibrationData::calcTFine(int32_t adc_T) const
 {
   int32_t var1 = ((((adc_T >> 3) - ((int32_t) dig_T1 << 1))) * ((int32_t) dig_T2)) >> 11;
 
@@ -270,9 +122,28 @@ int32_t BME280::CalibrationData::calcTFine(int32_t adc_T) const
   return var1 + var2;
 }
 
+/*Returns humidity in %RH as unsigned 32 bit integer in Q22.10 format (22 integer and 10 fractional bits).
+Output value of “47445” represents 47445/1024 = 46.333 %RH*/
+uint32_t CalibrationData::calcHumidity(int32_t adc_H, int32_t t_fine) const
+{
+  int32_t v_x1_u32r = (t_fine - ((int32_t) 76800));
+  v_x1_u32r = (((((adc_H << 14) - (((int32_t) dig_H4) << 20) - (((int32_t) dig_H5) * v_x1_u32r)) +
+                 ((int32_t) 16384)) >> 15) *
+               (((
+                     ((((v_x1_u32r * ((int32_t) dig_H6)) >> 10) *
+                       (((v_x1_u32r * ((int32_t) dig_H3)) >> 11) + ((int32_t) 32768))) >> 10)
+                     + ((int32_t) 2097152))
+                 * ((int32_t) dig_H2) + 8192) >> 14));
+  v_x1_u32r = (v_x1_u32r - (((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) * ((int32_t) dig_H1)) >> 4));
+  v_x1_u32r = (v_x1_u32r < 0 ? 0 : v_x1_u32r);
+  v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
+
+  return (uint32_t) (v_x1_u32r >> 12);
+}
+
 /*Returns pressure in Pa as unsigned 32 bit integer in Q24.8 format (24 integer bits and 8 fractional bits).
  Output value of “24674867” represents 24674867/256 = 96386.2 Pa = 963.862 hPa*/
-uint64_t BME280::CalibrationData::calcPressure(int32_t adc_P, int32_t t_fine) const
+uint64_t CalibrationData::calcPressure64(int32_t adc_P, int32_t t_fine) const
 {
   int64_t var1 = ((int64_t) t_fine) - 128000;
   int64_t var2 = var1 * var1 * (int64_t) dig_P6;
@@ -293,21 +164,192 @@ uint64_t BME280::CalibrationData::calcPressure(int32_t adc_P, int32_t t_fine) co
   return (uint64_t) p;
 }
 
-/*Returns humidity in %RH as unsigned 32 bit integer in Q22.10 format (22 integer and 10 fractional bits).
-Output value of “47445” represents 47445/1024 = 46.333 %RH*/
-uint32_t BME280::CalibrationData::calcHumidity(int32_t adc_H, int32_t t_fine) const
+/*Returns pressure in Pa as unsigned 32 bit integer.
+ Output value of “96386” equals = 96386 Pa = 963.86 hPa*/
+uint32_t CalibrationData::calcPressure32(int32_t adc_P, int32_t t_fine) const
 {
-  int32_t v_x1_u32r = (t_fine - ((int32_t) 76800));
-  v_x1_u32r = (((((adc_H << 14) - (((int32_t) dig_H4) << 20) - (((int32_t) dig_H5) * v_x1_u32r)) +
-                 ((int32_t) 16384)) >> 15) *
-               (((
-                     ((((v_x1_u32r * ((int32_t) dig_H6)) >> 10) *
-                       (((v_x1_u32r * ((int32_t) dig_H3)) >> 11) + ((int32_t) 32768))) >> 10)
-                     + ((int32_t) 2097152))
-                 * ((int32_t) dig_H2) + 8192) >> 14));
-  v_x1_u32r = (v_x1_u32r - (((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) * ((int32_t) dig_H1)) >> 4));
-  v_x1_u32r = (v_x1_u32r < 0 ? 0 : v_x1_u32r);
-  v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
+  int32_t var1 = (t_fine >> 1) - 64000;
+  int32_t var2 = (((var1 >> 2) * (var1 >> 2)) >> 11) * ((int32_t) dig_P6);
+  var2 = var2 + ((var1 * (int32_t) dig_P5) << 1);
+  var2 = (var2 >> 2) + (((int32_t) dig_P4) << 16);
+  var1 = (((((int32_t) dig_P3) * (((var1 >> 2) * (var1 >> 2)) >> 13)) >> 3) + ((((int32_t) dig_P2) * var1) >> 1)) >> 18;
+  var1 = ((32768 + var1) * ((int32_t) dig_P1)) >> 15;
+  if( var1 == 0 )
+  {
+    return 0; // avoid exception caused by division by zero
+  }
+  uint32_t p = (((uint32_t) (1048576 - adc_P)) - (var2 >> 12)) * 3125;
 
-  return (uint32_t) (v_x1_u32r >> 12);
+  if( p < 0x80000000 )
+  {
+    p = (p << 1) / ((uint32_t) var1);
+  }
+  else
+  {
+    p = (p / (uint32_t) var1) * 2;
+  }
+
+  var1 = (((int32_t) dig_P9) * ((int32_t) (((p >> 3) * (p >> 3)) >> 13))) >> 12;
+  var2 = (((int32_t) dig_P8) * ((int32_t) (p >> 2))) >> 13;
+  p = (uint32_t) (((int32_t) p) + ((var1 + var2 + ((int32_t) dig_P7)) >> 4));
+
+  return p;
 }
+
+bool Protocol::isSpi3Wire() const
+{
+  return false;
+}
+
+void I2CProtocol::init()
+{
+  Wire.begin();
+}
+
+void I2CProtocol::writeRegister(RegisterNumber reg, uint8_t val)
+{
+  Wire.beginTransmission(address);
+  Wire.write(reg);
+  Wire.write(val);
+  Wire.endTransmission();
+}
+
+bool I2CProtocol::readRegisters(RegisterNumber startReg, uint8_t count, uint8_t *buf)
+{
+  Wire.beginTransmission(address);
+  Wire.write(startReg);
+  Wire.endTransmission();
+
+  uint8_t read = Wire.requestFrom(address, count);
+
+  if( read < count )
+    return false;
+
+  for( int i = 0; i < count; ++i )
+  {
+    int value = Wire.read();
+    if( value < 0 )
+      return false;
+
+    buf[i] = static_cast<uint8_t>(value);
+  }
+
+  return true;
+}
+
+void SPIProtocol::init()
+{
+  SPI.begin();
+}
+
+void SPIProtocol::writeRegister(RegisterNumber reg, uint8_t val)
+{
+  SPI.beginTransaction(spiSettings);
+
+  digitalWrite(chipSelectPin, LOW);
+
+  SPI.transfer(reg & 0x7F);
+  SPI.transfer(val);
+
+  digitalWrite(chipSelectPin, HIGH);
+
+  SPI.endTransaction();
+}
+
+bool SPIProtocol::readRegisters(RegisterNumber startReg, uint8_t count, uint8_t *buf)
+{
+  SPI.beginTransaction(spiSettings);
+
+  digitalWrite(chipSelectPin, LOW);
+
+  SPI.transfer(startReg);
+  SPI.transfer(buf, count);
+
+  digitalWrite(chipSelectPin, HIGH);
+
+  SPI.endTransaction();
+  return true;
+}
+
+bool SPIProtocol::isSpi3Wire() const { return spi3wire; }
+
+bool BME280Sensor::init(bool checkCalibrationCRC)
+{
+  protocol->init();
+
+  // Read and check chip id
+  if( !protocol->readRegisters(REG_CHIPID, 1, &chipId) )
+    return false;
+
+  if( chipId != CHIPID_BME280 && chipId != CHIPID_BMP280 )
+    return false;
+
+  // Read calibration data
+  uint8_t calib[42];
+
+  // calib00…calib25 at memory addresses 0x88…0xA1
+  if( !protocol->readRegisters(REG_CALIB_1, 26, calib) )
+    return false;
+
+  // calib26…calib41 at memory addresses 0xE1…0xF0
+  if( !protocol->readRegisters(REG_CALIB_2, 16, calib + 26) )
+    return false;
+
+  if( checkCalibrationCRC && !CalibrationData::isValid(calib) )
+    return false;
+
+  calData.init(calib);
+
+  initialized = true;
+
+  return true;
+}
+
+SensorStatus BME280Sensor::readStatus()
+{
+  uint8_t stat = 0;
+
+  bool valid = protocol->readRegisters(REG_STATUS, 1, &stat);
+
+  return SensorStatus(valid, stat);
+}
+
+bool BME280Sensor::readMeasurement(RawMeasurement &rawMeasurement)
+{
+  uint8_t buf[8];
+
+  if( !protocol->readRegisters(REG_MEASUREMENT, 8, buf) )
+    return false;
+
+  uint32_t v = buf[0];
+  v <<= 8;
+  v |= buf[1];
+  v <<= 8;
+  v |= buf[2];
+  rawMeasurement.rawPressure = v >> 4;
+
+  v = buf[3];
+  v <<= 8;
+  v |= buf[4];
+  v <<= 8;
+  v |= buf[5];
+  rawMeasurement.rawTemperature = v >> 4;
+
+  v = buf[6];
+  v <<= 8;
+  v |= buf[7];
+  rawMeasurement.rawHumidity = v;
+
+  return true;
+}
+
+Measurement BME280Sensor::readMeasurement()
+{
+  RawMeasurement rawMeasurement = {};
+
+  bool valid = readMeasurement(rawMeasurement);
+
+  return Measurement(valid, rawMeasurement, calData);
+}
+
+#pragma clang diagnostic pop
